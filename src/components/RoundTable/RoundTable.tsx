@@ -28,6 +28,8 @@ export const RoundTable: React.FC<RoundTableProps> = memo(({ table, onTableMove 
   const { handleTableDragOver } = useDragDrop();
   const [isDraggingTable, setIsDraggingTable] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 });
+  const [hasMoved, setHasMoved] = useState(false);
 
   const tableRadius = getTableRadius(table.capacity);
   const tableSeats = seats.filter(s => s.tableId === table.id);
@@ -47,17 +49,12 @@ export const RoundTable: React.FC<RoundTableProps> = memo(({ table, onTableMove 
   const tableHasConflict = hasConflictWithTable();
   const canBatchSeat = isMultiSelectMode && selectedGuestIds.length > 0;
 
-  const handleTableClick = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('.seat-slot')) return;
-    if (isDraggingTable) return;
-    
-    if (canBatchSeat) {
-      e.stopPropagation();
-      const result = seatSelectedGuests(table.id);
-      if (result.hasConflict) {
-        setConflictMessage(result.message);
-        setTimeout(() => setConflictMessage(null), 2000);
-      }
+  const handleBatchSeat = () => {
+    if (!canBatchSeat) return;
+    const result = seatSelectedGuests(table.id);
+    if (result.hasConflict) {
+      setConflictMessage(result.message);
+      setTimeout(() => setConflictMessage(null), 2000);
     }
   };
 
@@ -65,6 +62,8 @@ export const RoundTable: React.FC<RoundTableProps> = memo(({ table, onTableMove 
     if ((e.target as HTMLElement).closest('.seat-slot')) return;
     e.stopPropagation();
     setIsDraggingTable(true);
+    setHasMoved(false);
+    setDragStartPos({ x: e.clientX, y: e.clientY });
     setDragOffset({
       x: e.clientX - table.x,
       y: e.clientY - table.y,
@@ -74,15 +73,28 @@ export const RoundTable: React.FC<RoundTableProps> = memo(({ table, onTableMove 
   const handleTableMouseMove = (e: React.MouseEvent) => {
     if (!isDraggingTable) return;
     e.stopPropagation();
+    
+    const moveDistance = Math.sqrt(
+      Math.pow(e.clientX - dragStartPos.x, 2) + 
+      Math.pow(e.clientY - dragStartPos.y, 2)
+    );
+    if (moveDistance > 5) {
+      setHasMoved(true);
+    }
+    
     const newX = e.clientX - dragOffset.x;
     const newY = e.clientY - dragOffset.y;
     onTableMove(table.id, newX, newY);
   };
 
-  const handleTableMouseUp = () => {
+  const handleTableMouseUp = (e: React.MouseEvent) => {
     if (isDraggingTable) {
       setIsDraggingTable(false);
       updateTable(table.id, { x: table.x, y: table.y });
+      
+      if (!hasMoved && !(e.target as HTMLElement).closest('.seat-slot')) {
+        handleBatchSeat();
+      }
     }
   };
 
@@ -108,14 +120,13 @@ export const RoundTable: React.FC<RoundTableProps> = memo(({ table, onTableMove 
         cursor: isDraggingTable ? 'grabbing' : (canBatchSeat ? 'pointer' : 'grab'),
         zIndex: isDraggingTable ? 100 : 10,
       }}
-      onClick={handleTableClick}
       onMouseDown={handleTableMouseDown}
       onMouseMove={handleTableMouseMove}
       onMouseUp={handleTableMouseUp}
       onMouseLeave={handleTableMouseUp}
       onDragOver={handleTableDragOver}
     >
-      <div className="absolute -top-10 left-1/2 -translate-x-1/2 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-20">
         <div className="flex items-center gap-1 bg-white px-3 py-1.5 rounded-full shadow-lg border border-stone-200">
           <Move size={14} className="text-stone-500" />
           <span className="text-sm font-medium text-stone-700">{table.name}</span>
@@ -150,22 +161,31 @@ export const RoundTable: React.FC<RoundTableProps> = memo(({ table, onTableMove 
         }}
       >
         <div
-          className="absolute inset-6 rounded-full flex items-center justify-center"
+          className="absolute rounded-full flex items-center justify-center"
           style={{
+            width: tableRadius * 1.2,
+            height: tableRadius * 1.2,
+            left: '50%',
+            top: '50%',
+            transform: 'translate(-50%, -50%)',
             background: `
               radial-gradient(ellipse at 40% 40%, #F5E6D3 0%, #E8D5B7 60%, #D4B896 100%)
             `,
             boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.1)',
           }}
         >
-          <div className="text-center">
-            <div className="font-bold text-stone-700 text-lg">{table.name}</div>
+          <div className="text-center px-4">
+            <div className="font-bold text-stone-700 text-lg whitespace-nowrap">{table.name}</div>
             <div className="text-xs text-stone-500 mt-1">
               {table.capacity}人桌 · {seatedGuests.length}/{table.capacity}
             </div>
+            {canBatchSeat && (
+              <div className="text-xs text-blue-600 mt-1 font-medium animate-pulse">
+                👆 点击批量落座
+              </div>
+            )}
           </div>
         </div>
-
       </div>
 
       {seatPositions.map(({ seat, position }) => {

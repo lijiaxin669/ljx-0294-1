@@ -402,28 +402,49 @@ export const useSeatingStore = create<SeatingStore>()(
           return { hasConflict: false, rule: null, message: '' };
         }
 
-        const tableSeats = seats
-          .filter(s => s.tableId === tableId && s.guestId === null)
+        const allTableSeats = seats
+          .filter(s => s.tableId === tableId)
           .sort((a, b) => a.positionIndex - b.positionIndex);
+
+        const emptySeats = allTableSeats.filter(s => s.guestId === null);
 
         const unseatedSelectedGuests = selectedGuestIds.filter(
           gid => !seats.some(s => s.guestId === gid)
         );
 
-        if (tableSeats.length < unseatedSelectedGuests.length) {
-          const message = `❌ 座位不足，需要 ${unseatedSelectedGuests.length} 个座位，仅剩 ${tableSeats.length} 个`;
+        if (emptySeats.length < unseatedSelectedGuests.length) {
+          const message = `❌ 座位不足，需要 ${unseatedSelectedGuests.length} 个座位，仅剩 ${emptySeats.length} 个`;
           set({ conflictMessage: message });
           setTimeout(() => set({ conflictMessage: null }), 2000);
           return { hasConflict: true, rule: null, message };
         }
 
+        const targetSeats: typeof emptySeats = [];
+        let pos = startPosition % table.capacity;
+        
+        while (targetSeats.length < unseatedSelectedGuests.length && targetSeats.length < emptySeats.length) {
+          const seat = emptySeats.find(s => s.positionIndex === pos);
+          if (seat && !targetSeats.includes(seat)) {
+            targetSeats.push(seat);
+          }
+          pos = (pos + 1) % table.capacity;
+          if (pos === startPosition % table.capacity && targetSeats.length < unseatedSelectedGuests.length) {
+            for (const s of emptySeats) {
+              if (!targetSeats.includes(s)) {
+                targetSeats.push(s);
+                if (targetSeats.length >= unseatedSelectedGuests.length) break;
+              }
+            }
+            break;
+          }
+        }
+
         const engine = new ConflictDetectionEngine(rules, tables, seats, guests);
         const conflicts: ConflictResult[] = [];
 
-        for (let i = 0; i < unseatedSelectedGuests.length; i++) {
+        for (let i = 0; i < unseatedSelectedGuests.length && i < targetSeats.length; i++) {
           const guestId = unseatedSelectedGuests[i];
-          const seatIndex = (startPosition + i) % table.capacity;
-          const seat = tableSeats.find(s => s.positionIndex === seatIndex) || tableSeats[i];
+          const seat = targetSeats[i];
           
           if (seat) {
             const conflict = engine.check(guestId, tableId, seat.positionIndex);
@@ -434,17 +455,16 @@ export const useSeatingStore = create<SeatingStore>()(
         }
 
         if (conflicts.length > 0) {
-          const message = conflicts[0].message + ` (还有 ${conflicts.length - 1} 个冲突)`;
+          const message = conflicts[0].message + (conflicts.length > 1 ? ` (还有 ${conflicts.length - 1} 个冲突)` : '');
           set({ conflictMessage: message });
           setTimeout(() => set({ conflictMessage: null }), 2000);
           return conflicts[0];
         }
 
         const newSeats = [...seats];
-        for (let i = 0; i < unseatedSelectedGuests.length; i++) {
+        for (let i = 0; i < unseatedSelectedGuests.length && i < targetSeats.length; i++) {
           const guestId = unseatedSelectedGuests[i];
-          const seatIndex = (startPosition + i) % table.capacity;
-          const seat = tableSeats.find(s => s.positionIndex === seatIndex) || tableSeats[i];
+          const seat = targetSeats[i];
           
           if (seat) {
             const seatIdx = newSeats.findIndex(s => s.id === seat.id);

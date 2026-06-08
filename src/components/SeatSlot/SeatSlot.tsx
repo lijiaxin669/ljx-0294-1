@@ -83,8 +83,8 @@ export const SeatSlot: React.FC<SeatSlotProps> = memo(({
           will-change-transform
         `}
         style={{
-          width: 64,
-          height: 64,
+          width: 72,
+          height: 72,
           border: `3px solid ${showConflict ? '#DC2626' : isHovered ? '#F59E0B' : guest ? '#D97706' : '#A8A29E'}`,
           backgroundColor: guest ? guest.avatarColor : (isHovered ? '#FEF3C7' : '#FAFAF0'),
           boxShadow: showConflict
@@ -99,15 +99,15 @@ export const SeatSlot: React.FC<SeatSlotProps> = memo(({
       >
         {guest ? (
           <div className="flex flex-col items-center justify-center text-white">
-            <span className="font-bold text-sm leading-none">{guest.name.charAt(0)}</span>
+            <span className="font-bold text-base leading-none">{guest.name.charAt(0)}</span>
           </div>
         ) : (
-          <span className="text-stone-400 text-xs font-medium">空</span>
+          <span className="text-stone-400 text-sm font-medium">空</span>
         )}
 
         {guest && (
-          <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 whitespace-nowrap">
-            <div className="bg-white px-2 py-0.5 rounded text-xs font-medium shadow-md border border-stone-200 max-w-[80px] overflow-hidden text-ellipsis">
+          <div className="absolute -bottom-12 left-1/2 -translate-x-1/2 whitespace-nowrap">
+            <div className="bg-white px-2 py-1 rounded text-xs font-medium shadow-md border border-stone-200 max-w-[100px] overflow-hidden text-ellipsis">
               {guest.name}
             </div>
             <div className="text-[10px] text-center mt-0.5 text-stone-500">
@@ -117,13 +117,13 @@ export const SeatSlot: React.FC<SeatSlotProps> = memo(({
         )}
 
         {isHovered && !guest && (
-          <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-amber-500 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-20 shadow-lg">
+          <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-amber-500 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-20 shadow-lg">
             拖放到此落座
           </div>
         )}
 
         {showConflict && (
-          <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-red-600 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-20 shadow-lg animate-pulse">
+          <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-red-600 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-20 shadow-lg animate-pulse">
             ❌ 冲突
           </div>
         )}
