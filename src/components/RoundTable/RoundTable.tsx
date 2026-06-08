@@ -12,7 +12,19 @@ interface RoundTableProps {
 }
 
 export const RoundTable: React.FC<RoundTableProps> = memo(({ table, onTableMove }) => {
-  const { seats, guests, rules, removeTable, updateTable, checkConflicts, draggingGuestId } = useSeatingStore();
+  const { 
+    seats, 
+    guests, 
+    rules, 
+    removeTable, 
+    updateTable, 
+    checkConflicts, 
+    draggingGuestId,
+    selectedGuestIds,
+    isMultiSelectMode,
+    seatSelectedGuests,
+    setConflictMessage,
+  } = useSeatingStore();
   const { handleTableDragOver } = useDragDrop();
   const [isDraggingTable, setIsDraggingTable] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -33,6 +45,21 @@ export const RoundTable: React.FC<RoundTableProps> = memo(({ table, onTableMove 
   };
 
   const tableHasConflict = hasConflictWithTable();
+  const canBatchSeat = isMultiSelectMode && selectedGuestIds.length > 0;
+
+  const handleTableClick = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('.seat-slot')) return;
+    if (isDraggingTable) return;
+    
+    if (canBatchSeat) {
+      e.stopPropagation();
+      const result = seatSelectedGuests(table.id);
+      if (result.hasConflict) {
+        setConflictMessage(result.message);
+        setTimeout(() => setConflictMessage(null), 2000);
+      }
+    }
+  };
 
   const handleTableMouseDown = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('.seat-slot')) return;
@@ -78,9 +105,10 @@ export const RoundTable: React.FC<RoundTableProps> = memo(({ table, onTableMove 
         left: table.x,
         top: table.y,
         transform: 'translate(-50%, -50%)',
-        cursor: isDraggingTable ? 'grabbing' : 'grab',
+        cursor: isDraggingTable ? 'grabbing' : (canBatchSeat ? 'pointer' : 'grab'),
         zIndex: isDraggingTable ? 100 : 10,
       }}
+      onClick={handleTableClick}
       onMouseDown={handleTableMouseDown}
       onMouseMove={handleTableMouseMove}
       onMouseUp={handleTableMouseUp}
@@ -110,14 +138,15 @@ export const RoundTable: React.FC<RoundTableProps> = memo(({ table, onTableMove 
           background: `
             radial-gradient(ellipse at 30% 30%, #8B4513 0%, #5D3A1A 50%, #3E2723 100%)
           `,
-          border: '6px solid #2D1810',
+          border: canBatchSeat ? '4px dashed #3B82F6' : '6px solid #2D1810',
           boxShadow: `
             inset 0 -10px 30px rgba(0,0,0,0.4),
             inset 0 10px 30px rgba(255,255,255,0.1),
             0 20px 40px rgba(0,0,0,0.3),
             ${tableHasConflict ? '0 0 0 6px rgba(220, 38, 38, 0.4), 0 0 30px rgba(220, 38, 38, 0.3)' : ''}
+            ${canBatchSeat ? '0 0 0 6px rgba(59, 130, 246, 0.5), 0 0 30px rgba(59, 130, 246, 0.3)' : ''}
           `,
-          transition: 'box-shadow 0.3s ease',
+          transition: 'box-shadow 0.3s ease, border 0.3s ease',
         }}
       >
         <div
@@ -137,25 +166,26 @@ export const RoundTable: React.FC<RoundTableProps> = memo(({ table, onTableMove 
           </div>
         </div>
 
-        {seatPositions.map(({ seat, position }) => {
-          const guest = guests.find(g => g.id === seat.guestId) || null;
-          const conflict = draggingGuestId && !seat.guestId
-            ? checkConflicts(draggingGuestId, table.id, seat.positionIndex)
-            : { hasConflict: false };
-
-          return (
-            <div key={seat.id} className="seat-slot">
-              <SeatSlot
-                seat={seat}
-                guest={guest}
-                tableId={table.id}
-                position={position}
-                hasConflict={conflict.hasConflict}
-              />
-            </div>
-          );
-        })}
       </div>
+
+      {seatPositions.map(({ seat, position }) => {
+        const guest = guests.find(g => g.id === seat.guestId) || null;
+        const conflict = draggingGuestId && !seat.guestId
+          ? checkConflicts(draggingGuestId, table.id, seat.positionIndex)
+          : { hasConflict: false };
+
+        return (
+          <div key={seat.id} className="seat-slot">
+            <SeatSlot
+              seat={seat}
+              guest={guest}
+              tableId={table.id}
+              position={position}
+              hasConflict={conflict.hasConflict}
+            />
+          </div>
+        );
+      })}
 
       <div
         className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"

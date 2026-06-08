@@ -83,8 +83,8 @@ export const SeatSlot: React.FC<SeatSlotProps> = memo(({
           will-change-transform
         `}
         style={{
-          width: 56,
-          height: 56,
+          width: 64,
+          height: 64,
           border: `3px solid ${showConflict ? '#DC2626' : isHovered ? '#F59E0B' : guest ? '#D97706' : '#A8A29E'}`,
           backgroundColor: guest ? guest.avatarColor : (isHovered ? '#FEF3C7' : '#FAFAF0'),
           boxShadow: showConflict

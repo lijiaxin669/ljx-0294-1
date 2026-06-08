@@ -10,12 +10,16 @@ export const getRandomAvatarColor = (): string => {
 };
 
 export const getTableRadius = (capacity: number): number => {
-  const baseRadius = 100;
-  return baseRadius + (capacity - 8) * 8;
+  const baseRadius = 110;
+  return baseRadius + (capacity - 8) * 10;
 };
 
 export const getSeatRadius = (tableRadius: number): number => {
-  return 24;
+  return 28;
+};
+
+export const getSeatDistance = (tableRadius: number): number => {
+  return tableRadius + 55;
 };
 
 export const calculateSeatPosition = (
@@ -26,7 +30,7 @@ export const calculateSeatPosition = (
   totalSeats: number
 ): { x: number; y: number } => {
   const angle = (seatIndex / totalSeats) * Math.PI * 2 - Math.PI / 2;
-  const distance = tableRadius + 40;
+  const distance = getSeatDistance(tableRadius);
   return {
     x: tableX + Math.cos(angle) * distance,
     y: tableY + Math.sin(angle) * distance,

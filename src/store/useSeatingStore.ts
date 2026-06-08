@@ -20,6 +20,7 @@ interface SeatingStore extends SeatingState {
   historyIndex: number;
   canUndo: boolean;
   canRedo: boolean;
+  isMultiSelectMode: boolean;
 
   initMockData: () => void;
   saveToHistory: () => void;
@@ -27,6 +28,7 @@ interface SeatingStore extends SeatingState {
   redo: () => void;
 
   addGuest: (guest: Omit<Guest, 'id' | 'createdAt' | 'avatarColor'>) => void;
+  addGuestWithAutoRule: (guest: Omit<Guest, 'id' | 'createdAt' | 'avatarColor'>) => void;
   removeGuest: (id: string) => void;
   updateGuest: (id: string, updates: Partial<Guest>) => void;
 
@@ -35,13 +37,16 @@ interface SeatingStore extends SeatingState {
   updateTable: (id: string, updates: Partial<Table>) => void;
 
   seatGuest: (guestId: string, tableId: string, positionIndex: number) => ConflictResult;
+  seatSelectedGuests: (tableId: string, startPosition?: number) => ConflictResult;
   unseatGuest: (guestId: string) => void;
+  unseatSelectedGuests: () => void;
   moveGuest: (guestId: string, newTableId: string, newPositionIndex: number) => ConflictResult;
 
   addRule: (rule: Omit<Rule, 'id'>) => void;
   removeRule: (id: string) => void;
 
   selectGuest: (id: string, multi?: boolean) => void;
+  toggleMultiSelectMode: () => void;
   clearSelection: () => void;
   setDraggingGuest: (id: string | null) => void;
   setHoveredSeat: (id: string | null) => void;
@@ -51,6 +56,7 @@ interface SeatingStore extends SeatingState {
   isGuestSeated: (guestId: string) => boolean;
   getSeatedGuests: (tableId: string) => Guest[];
   getUnseatedGuests: () => Guest[];
+  getGuestByName: (name: string) => Guest | undefined;
   clearAll: () => void;
 }
 
@@ -79,6 +85,7 @@ export const useSeatingStore = create<SeatingStore>()(
       historyIndex: -1,
       canUndo: false,
       canRedo: false,
+      isMultiSelectMode: false,
 
       initMockData: () => {
         const guests = mockGuests.map(g => ({ ...g, id: generateId() }));
@@ -168,6 +175,88 @@ export const useSeatingStore = create<SeatingStore>()(
           createdAt: Date.now(),
         };
         set(state => ({ guests: [...state.guests, newGuest] }));
+        get().saveToHistory();
+      },
+
+      addGuestWithAutoRule: (guest) => {
+        const newGuest: Guest = {
+          ...guest,
+          id: generateId(),
+          avatarColor: getRandomAvatarColor(),
+          createdAt: Date.now(),
+        };
+
+        const { guests } = get();
+        const allGuests = [...guests, newGuest];
+        const rulesToAdd: Omit<Rule, 'id'>[] = [];
+
+        if (guest.dietaryNote) {
+          const note = guest.dietaryNote;
+          
+          const adjacentMatch = note.match(/(挨着|和.*一起|必须挨着|要和.*坐|跟.*一起|挨着.*坐)/);
+          if (adjacentMatch) {
+            const nameMatch = note.match(/(挨着|和|跟|要和)\s*([^\s，,。.、]+)/);
+            if (nameMatch && nameMatch[2]) {
+              const targetName = nameMatch[2];
+              const targetGuest = allGuests.find(g => g.name === targetName);
+              if (targetGuest && targetGuest.id !== newGuest.id) {
+                rulesToAdd.push({
+                  type: 'MUST_ADJACENT',
+                  guestAId: newGuest.id,
+                  guestBId: targetGuest.id,
+                  description: `${newGuest.name} 需要挨着 ${targetGuest.name} 就坐`,
+                });
+              }
+            }
+          }
+
+          const notSameMatch = note.match(/(不能和.*同桌|不要和.*坐|不和.*同桌|避开.*坐)/);
+          if (notSameMatch) {
+            const nameMatch = note.match(/(不能和|不要和|不和|避开)\s*([^\s，,。.、]+)/);
+            if (nameMatch && nameMatch[2]) {
+              const targetName = nameMatch[2];
+              const targetGuest = allGuests.find(g => g.name === targetName);
+              if (targetGuest && targetGuest.id !== newGuest.id) {
+                rulesToAdd.push({
+                  type: 'NOT_SAME_TABLE',
+                  guestAId: newGuest.id,
+                  guestBId: targetGuest.id,
+                  description: `${newGuest.name} 不能与 ${targetGuest.name} 同桌`,
+                });
+              }
+            }
+          }
+
+          const distanceMatch = note.match(/(间隔.*桌|离.*桌远一点|和.*隔.*桌)/);
+          if (distanceMatch) {
+            const nameMatch = note.match(/(间隔|离|和)\s*([^\s，,。.、]+)/);
+            const numMatch = note.match(/(\d+)\s*桌/);
+            if (nameMatch && nameMatch[2]) {
+              const targetName = nameMatch[2];
+              const minDistance = numMatch ? parseInt(numMatch[1]) : 1;
+              const targetGuest = allGuests.find(g => g.name === targetName);
+              if (targetGuest && targetGuest.id !== newGuest.id) {
+                rulesToAdd.push({
+                  type: 'MIN_TABLES_DISTANCE',
+                  guestAId: newGuest.id,
+                  guestBId: targetGuest.id,
+                  value: minDistance,
+                  description: `${newGuest.name} 需要与 ${targetGuest.name} 间隔至少 ${minDistance} 桌`,
+                });
+              }
+            }
+          }
+        }
+
+        if (rulesToAdd.length > 0) {
+          const newRules = rulesToAdd.map(r => ({ ...r, id: generateId() }));
+          set(state => ({
+            guests: [...state.guests, newGuest],
+            rules: [...state.rules, ...newRules],
+          }));
+        } else {
+          set(state => ({ guests: [...state.guests, newGuest] }));
+        }
         get().saveToHistory();
       },
 
@@ -280,8 +369,10 @@ export const useSeatingStore = create<SeatingStore>()(
       },
 
       selectGuest: (id, multi = false) => {
+        const { isMultiSelectMode } = get();
+        const useMulti = multi || isMultiSelectMode;
         set(state => {
-          if (multi) {
+          if (useMulti) {
             const isSelected = state.selectedGuestIds.includes(id);
             return {
               selectedGuestIds: isSelected
@@ -293,8 +384,97 @@ export const useSeatingStore = create<SeatingStore>()(
         });
       },
 
+      toggleMultiSelectMode: () => {
+        set(state => ({
+          isMultiSelectMode: !state.isMultiSelectMode,
+          selectedGuestIds: state.isMultiSelectMode ? [] : state.selectedGuestIds,
+        }));
+      },
+
       clearSelection: () => {
         set({ selectedGuestIds: [] });
+      },
+
+      seatSelectedGuests: (tableId, startPosition = 0) => {
+        const { selectedGuestIds, guests, tables, seats, rules } = get();
+        const table = tables.find(t => t.id === tableId);
+        if (!table || selectedGuestIds.length === 0) {
+          return { hasConflict: false, rule: null, message: '' };
+        }
+
+        const tableSeats = seats
+          .filter(s => s.tableId === tableId && s.guestId === null)
+          .sort((a, b) => a.positionIndex - b.positionIndex);
+
+        const unseatedSelectedGuests = selectedGuestIds.filter(
+          gid => !seats.some(s => s.guestId === gid)
+        );
+
+        if (tableSeats.length < unseatedSelectedGuests.length) {
+          const message = `❌ 座位不足，需要 ${unseatedSelectedGuests.length} 个座位，仅剩 ${tableSeats.length} 个`;
+          set({ conflictMessage: message });
+          setTimeout(() => set({ conflictMessage: null }), 2000);
+          return { hasConflict: true, rule: null, message };
+        }
+
+        const engine = new ConflictDetectionEngine(rules, tables, seats, guests);
+        const conflicts: ConflictResult[] = [];
+
+        for (let i = 0; i < unseatedSelectedGuests.length; i++) {
+          const guestId = unseatedSelectedGuests[i];
+          const seatIndex = (startPosition + i) % table.capacity;
+          const seat = tableSeats.find(s => s.positionIndex === seatIndex) || tableSeats[i];
+          
+          if (seat) {
+            const conflict = engine.check(guestId, tableId, seat.positionIndex);
+            if (conflict.hasConflict) {
+              conflicts.push(conflict);
+            }
+          }
+        }
+
+        if (conflicts.length > 0) {
+          const message = conflicts[0].message + ` (还有 ${conflicts.length - 1} 个冲突)`;
+          set({ conflictMessage: message });
+          setTimeout(() => set({ conflictMessage: null }), 2000);
+          return conflicts[0];
+        }
+
+        const newSeats = [...seats];
+        for (let i = 0; i < unseatedSelectedGuests.length; i++) {
+          const guestId = unseatedSelectedGuests[i];
+          const seatIndex = (startPosition + i) % table.capacity;
+          const seat = tableSeats.find(s => s.positionIndex === seatIndex) || tableSeats[i];
+          
+          if (seat) {
+            const seatIdx = newSeats.findIndex(s => s.id === seat.id);
+            if (seatIdx !== -1) {
+              newSeats[seatIdx] = { ...newSeats[seatIdx], guestId };
+            }
+          }
+        }
+
+        set({ seats: newSeats, conflictMessage: null, selectedGuestIds: [] });
+        get().saveToHistory();
+
+        return { hasConflict: false, rule: null, message: '' };
+      },
+
+      unseatSelectedGuests: () => {
+        const { selectedGuestIds } = get();
+        if (selectedGuestIds.length === 0) return;
+
+        set(state => ({
+          seats: state.seats.map(s =>
+            selectedGuestIds.includes(s.guestId!) ? { ...s, guestId: null } : s
+          ),
+          selectedGuestIds: [],
+        }));
+        get().saveToHistory();
+      },
+
+      getGuestByName: (name) => {
+        return get().guests.find(g => g.name === name);
       },
 
       setDraggingGuest: (id) => {

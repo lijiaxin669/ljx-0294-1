@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Users, ChefHat, Search } from 'lucide-react';
+import { Plus, Users, ChefHat, Search, CheckSquare, Square, UserMinus, UserPlus } from 'lucide-react';
 import type { Seniority } from '../../types';
 import { SENIORITY_LABELS } from '../../types';
 import { useSeatingStore } from '../../store/useSeatingStore';
@@ -8,7 +8,17 @@ import { GuestCard } from '../GuestCard/GuestCard';
 const SENIORITY_FILTERS: (Seniority | 'all')[] = ['all', 'elder', 'peer', 'junior'];
 
 export const GuestSidebar: React.FC = () => {
-  const { guests, addGuest, getUnseatedGuests, initMockData } = useSeatingStore();
+  const { 
+    guests, 
+    addGuestWithAutoRule, 
+    getUnseatedGuests, 
+    initMockData,
+    selectedGuestIds,
+    isMultiSelectMode,
+    toggleMultiSelectMode,
+    clearSelection,
+    unseatSelectedGuests,
+  } = useSeatingStore();
   const [filter, setFilter] = useState<Seniority | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
@@ -20,6 +30,7 @@ export const GuestSidebar: React.FC = () => {
 
   const unseatedGuests = getUnseatedGuests();
   const seatedCount = guests.length - unseatedGuests.length;
+  const selectedCount = selectedGuestIds.length;
 
   const filteredGuests = unseatedGuests.filter(guest => {
     const matchesFilter = filter === 'all' || guest.seniority === filter;
@@ -30,7 +41,7 @@ export const GuestSidebar: React.FC = () => {
 
   const handleAddGuest = () => {
     if (!newGuest.name.trim()) return;
-    addGuest(newGuest);
+    addGuestWithAutoRule(newGuest);
     setNewGuest({ name: '', seniority: 'peer', dietaryNote: '' });
     setShowAddForm(false);
   };
@@ -87,13 +98,54 @@ export const GuestSidebar: React.FC = () => {
       </div>
 
       <div className="p-3 space-y-2">
-        <button
-          onClick={() => setShowAddForm(true)}
-          className="w-full py-2.5 px-4 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg font-medium hover:from-amber-600 hover:to-amber-700 transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2"
-        >
-          <Plus size={18} />
-          添加宾客
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowAddForm(true)}
+            className="flex-1 py-2.5 px-4 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg font-medium hover:from-amber-600 hover:to-amber-700 transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2"
+          >
+            <Plus size={18} />
+            添加宾客
+          </button>
+          <button
+            onClick={toggleMultiSelectMode}
+            className={`py-2.5 px-4 rounded-lg font-medium transition-all shadow-md flex items-center justify-center gap-2 ${
+              isMultiSelectMode
+                ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700'
+                : 'bg-gradient-to-r from-stone-400 to-stone-500 text-white hover:from-stone-500 hover:to-stone-600'
+            }`}
+            title={isMultiSelectMode ? '取消多选模式' : '开启多选模式'}
+          >
+            {isMultiSelectMode ? <CheckSquare size={18} /> : <Square size={18} />}
+          </button>
+        </div>
+
+        {isMultiSelectMode && selectedCount > 0 && (
+          <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-blue-700">
+                已选择 {selectedCount} 位宾客
+              </span>
+              <button
+                onClick={clearSelection}
+                className="text-xs text-blue-600 hover:text-blue-800"
+              >
+                清空选择
+              </button>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={unseatSelectedGuests}
+                className="flex-1 py-1.5 px-3 bg-orange-500 text-white text-xs rounded-md hover:bg-orange-600 transition-colors flex items-center justify-center gap-1"
+              >
+                <UserMinus size={14} />
+                批量离座
+              </button>
+            </div>
+            <p className="text-xs text-blue-500 mt-2">
+              💡 点击目标桌位即可批量落座
+            </p>
+          </div>
+        )}
 
         {guests.length === 0 && (
           <button
@@ -127,11 +179,15 @@ export const GuestSidebar: React.FC = () => {
           </select>
           <input
             type="text"
-            placeholder="忌口备注（如：海鲜过敏、素食）"
+            placeholder="忌口备注（如：海鲜过敏、必须挨着小宝）"
             value={newGuest.dietaryNote}
             onChange={(e) => setNewGuest({ ...newGuest, dietaryNote: e.target.value })}
-            className="w-full px-3 py-2 mb-3 border border-stone-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+            className="w-full px-3 py-2 mb-2 border border-stone-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
           />
+          <div className="text-xs text-amber-600 mb-3 bg-amber-50 p-2 rounded">
+            <p>💡 备注中包含"挨着XX"会自动创建相邻规则</p>
+            <p>💡 备注中包含"不能和XX同桌"会自动创建禁坐规则</p>
+          </div>
           <div className="flex gap-2">
             <button
               onClick={handleAddGuest}
@@ -159,13 +215,18 @@ export const GuestSidebar: React.FC = () => {
           </div>
         ) : (
           filteredGuests.map((guest) => (
-            <GuestCard key={guest.id} guest={guest} />
+            <GuestCard 
+              key={guest.id} 
+              guest={guest} 
+              isSelected={selectedGuestIds.includes(guest.id)}
+            />
           ))
         )}
       </div>
 
       <div className="p-3 border-t border-amber-200 bg-amber-50 text-xs text-stone-500">
         <p>💡 拖拽宾客卡片到座位上即可落座</p>
+        <p className="mt-1">☑️ 点击多选按钮可批量选择并落座</p>
         <p className="mt-1">⌨️ Ctrl+Z 撤销 | Ctrl+Y 重做</p>
       </div>
     </div>
